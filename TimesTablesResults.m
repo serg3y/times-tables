@@ -1,7 +1,7 @@
 function TimesTablesResults(N1, N2, OP, max_time, max_hist, gamma, T)
 % Defaults
-if nargin<1 || isempty(N1),       N1 = 2:5; end
-if nargin<2 || isempty(N2),       N2 = 2:9; end
+if nargin<1 || isempty(N1),       N1 = 2:11; end
+if nargin<2 || isempty(N2),       N2 = 2:11; end
 if nargin<3 || isempty(OP),       OP = ["times" "divide"]; end
 if nargin<4 || isempty(max_time), max_time = 20; end % Maximum time per question
 if nargin<5 || isempty(max_hist), max_hist = 2; end % Look at only this many previous results
@@ -10,7 +10,7 @@ if nargin<7 || isempty(T),        T = read_logs(dir('log/*.log')); end
 
 % Prepare figure
 isNewPlot = isempty(get(gcf, 'UserData'));
-isNewPlot =1;
+isNewPlot = 1;
 if isNewPlot
     set(clf(gcf), 'WindowStyle', 'docked') % New figure
 else
@@ -42,7 +42,6 @@ for k = 1:numel(OP)
 end
 
 if isNewPlot
-    linkaxes(ax)
     set(gcf, 'UserData', ax)
 end
 end

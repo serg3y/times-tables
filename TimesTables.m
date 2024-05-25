@@ -1,21 +1,30 @@
 function TimesTables(N1, N2, OP, m)
 
 % Defaults
-N1 = [2:11];   % Numbers
-N2 = [2:11];   % Numbers
+N1 = 2:11;   % Numbers
+N2 = 2:11;   % Numbers
 OP = ["times" "divide"]; % Opperators
+num_questions = 50;
 dynamic = true;
+max_time = 20; % Maximum time per question
+max_hist = 5;  % Look at only this many previous results
+gamma = 1;
+
+% Checks
+cd(fileparts(mfilename('fullpath')))
 
 % Generate nubers
 if dynamic
     % Read previous results
-    num_questions = 50;
-    max_time = 20; % Maximum time per question
-    max_hist = 5;  % Look at only this many previous results
-    gamma = 1;
     T = read_logs(dir('log/*.log'));
-    for k = numel(OP) : -1 : 1
-        [~, ~, p(:,:,k)] = calc_stats(T, OP(k),  N1, N2, max_time, max_hist, gamma);
+
+    % Give each question a probability based on past results
+    if isempty(T)
+        p = ones(numel(N1), numel(N2));
+    else
+        for k = numel(OP) : -1 : 1
+            [~, ~, p(:,:,k)] = calc_stats(T, OP(k), N1, N2, max_time, max_hist, gamma);
+        end
     end
 
     % Pick questions
@@ -38,12 +47,11 @@ end
 if ~isfolder('log')
     mkdir('log')
 end
-file = sprintf('log/%s_[%s]_[%s]_%s_%g.log', ...
-    string(datetime('now', 'Format', 'yyyyMMdd_HHmm')), ...
-    strjoin(string(N1)), strjoin(string(N2)), strjoin(OP), numel(V1));
+file = sprintf('log/%s_[%s]_[%s]_[%s]_%g.log', datetime('now', 'Format', 'yyyyMMdd_HHmm'), strjoin(string(N1)), strjoin(string(N2)), strjoin(OP), numel(V1));
+%eg log/20240525_2225_[2 3 4 5 6 7 8 9 10 11]_[2 3 4 5 6 7 8 9 10 11]_[times divide]_50.log
 pause(1)
 
-% Loop through number of questions
+% Step through questions
 for k = 1 : numel(V1)
 
     % Generate question
@@ -92,7 +100,7 @@ for k = 1 : numel(V1)
     pause(1)
 
     % Log to file
-    log(file, '%3d, %3d, %6s, %3d, %3d, %1d, %4.1f', num1, num2, opp, answer, reply, reply==answer, toc);
+    log(file, '%3d, %3d, %6s, %3d, %3d, %1d, %4.1f', num1, num2, opp, answer, reply, reply==answer, t);
 
     TimesTablesResults(N1, N2, OP, max_time, max_hist, gamma, T)
 end
