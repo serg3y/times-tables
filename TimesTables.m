@@ -1,84 +1,85 @@
 function TimesTables
 
 % Figure
-close(findobj(0, 'Name', 'Times Tables')) % For convenience only
+close(findobj(0, 'Name', 'Times Tables')) % Close old figures (convenience)
 fig = figure(...
-    Position = get(0).ScreenSize([3 4 3 4]).*[0.2 0.1 0.6 0.8], ...
+    Position = get(0).ScreenSize([3 4 3 4]).*[0.2 0.2 0.6 0.6], ...
     Name = 'Times Tables', NumberTitle = 'off', ...
     ToolBar = 'none', MenuBar = 'none', ...
     DefaultUipanelUnits = 'normalized', ...
     DefaultUicontrolUnits = 'normalized', ...
-    DefaultTextboxshapeUnits = 'normalized', ...
     DefaultUicontrolFontSize = 14, ...
     DefaultTextboxshapeFontSize = 14, ...
     DefaultUicontrolFontWeight = 'bold', ...
     DefaultTextboxshapeEdgeColor = 'n', ...
-    DefaultTextboxshapeInterpreter = 'n', ...
     DefaultTextboxshapeVerticalAlignment = 'middle', ...
-    DefaultTextboxshapeHorizontalAlignment = 'cen');
+    DefaultTextboxshapeHorizontalAlignment = 'center');
 
-% Setting
-N1 = 2:11;   % Numbers
-N2 = 2:11;   % Numbers
-OP = ["times" "divide"]; % Opperators
-dynamic = true;
-p1 = uipanel(fig, 'OuterPosition', [0 0.75 0.5 0.25], 'BorderType', 'beveledin');
-annotation(p1, 'textbox', 'Position', [0.0 0.7 0.25 0.2], 'String', 'Numbers');
-annotation(p1, 'textbox', 'Position', [0.0 0.4 0.25 0.2], 'String', 'Numbers');
-annotation(p1, 'textbox', 'Position', [0.0 0.1 0.25 0.2], 'String', 'Operators');
-N1h = uicontrol (p1, 'Style', 'edit', 'Position', [0.25 0.7 0.7 0.2], 'String', strjoin(string(N1)));
-N2h = uicontrol (p1, 'Style', 'edit', 'Position', [0.25 0.4 0.7 0.2], 'String', strjoin(string(N2)));
-O1h = uicontrol (p1, 'Style', 'chec', 'Position', [0.35 0.1 0.3 0.2], 'String', 'Times', 'Value', 1);
-O2h = uicontrol (p1, 'Style', 'chec', 'Position', [0.65 0.1 0.3 0.2], 'String', 'Divide', 'Value', 1);
+% Settings panel
+p1 = uipanel(fig, 'Position', [0 0.0 0.33 1.0], 'BorderType', 'beveledin');
+annotation(p1, 'textbox', 'Position', [0.0 0.9 0.25 0.07], 'String', 'Numbers');
+annotation(p1, 'textbox', 'Position', [0.0 0.8 0.25 0.07], 'String', 'Numbers');
+annotation(p1, 'textbox', 'Position', [0.0 0.7 0.25 0.07], 'String', 'Operators');
+hN1 = uicontrol (p1, 'Style', 'edit', 'Position', [0.25 0.9 0.7 0.07], 'String', '2 3 4 5 6 7 8 9 10 11');
+hN2 = uicontrol (p1, 'Style', 'edit', 'Position', [0.25 0.8 0.7 0.07], 'String', '2 3 4 5 6 7 8 9 10 11');
+hOP = [uicontrol(p1, 'Style', 'chec', 'Position', [0.35 0.7 0.3 0.07], 'String', 'Times', 'Value', 1)
+       uicontrol(p1, 'Style', 'chec', 'Position', [0.65 0.7 0.3 0.07], 'String', 'Divide', 'Value', 1)];
+annotation(p1, 'textbox', 'Position', [0.0 0.5 0.3 0.07], 'String', 'Max Time');
+annotation(p1, 'textbox', 'Position', [0.0 0.4 0.3 0.07], 'String', 'Max Count');
+annotation(p1, 'textbox', 'Position', [0.0 0.3 0.3 0.07], 'String', 'Selectivity');
+hMaxTime  = uicontrol(p1, 'Style', 'edit', 'Position', [0.3 0.5 0.3 0.07], 'String', 20, 'Tooltip', 'Maximum time per question (sec)');
+hMaxCount = uicontrol(p1, 'Style', 'edit', 'Position', [0.3 0.4 0.3 0.07], 'String', 5, 'Tooltip', 'Limit assessment to this many results');
+hGamma    = uicontrol(p1, 'Style', 'edit', 'Position', [0.3 0.3 0.3 0.07], 'String', 1, 'Tooltip', ['If >1 then select questions in red.' 10 'If <1 more uniform' 10 'If 0 compleately unifrom.']);
 
-% Assessment
-p2 = uipanel(fig, 'OuterPosition', [0.5 0.75 0.5 0.25], 'BorderType', 'beveledin');
-annotation(p2, 'textbox', 'Position', [0.0 0.7 0.3 0.2], 'String', 'Max Time');
-annotation(p2, 'textbox', 'Position', [0.0 0.4 0.3 0.2], 'String', 'Max History');
-annotation(p2, 'textbox', 'Position', [0.0 0.1 0.3 0.2], 'String', 'Gamma');
-max_time_h = uicontrol(p2, 'Style', 'edit', 'Position', [0.25 0.7 0.7 0.2], 'String', 20);
-max_hist_h = uicontrol(p2, 'Style', 'edit', 'Position', [0.25 0.4 0.7 0.2], 'String', 5);
-gamma_h    = uicontrol(p2, 'Style', 'edit', 'Position', [0.25 0.1 0.7 0.2], 'String', 1);
-
-% Results
-p3 = uipanel(fig, 'OuterPosition', [0.5 0.0 0.5 0.75], 'BorderType', 'beveledin');
-
-num_questions = 50;
-max_time = 20; % Maximum time per question
-max_hist = 5;  % Look at only this many previous results
-gamma = 1;
-
-T = read_logs(dir('log/*.log'));
-plotResults(p3, N1, N2, OP, max_time, max_hist, gamma, T)
-
-% Answer box
-hAns = uicontrol('Style', 'edit', 'Units', 'normalized', 'Position', [0.05 0.4 0.4 0.1], 'FontSize', 14, 'HorizontalAlignment', 'right');
+% Quiz panel
+p2 = uipanel(fig, 'Position', [0.33 0.0 0.33 1], 'BorderType', 'beveledin');
+hStart = uicontrol(p2, 'Style', 'push', 'Position', [0.01 0.89 0.25 0.1], 'String', 'START', 'Callback', @(o, e)startCallback); % Answer box
+hStop  = uicontrol(p2, 'Style', 'push', 'Position', [0.74 0.89 0.25 0.1], 'String', 'STOP',  'Callback', @(o, e)startCallback); % Answer box
+annotation(p2, 'textbox', 'Position', [0.3 0.9 0.4 0.1], 'String', '0 / ∞');
+annotation(p2, 'textbox', 'Position', [0.1 0.65 0.8 0.2], 'String', 'Press START');
+hAns    = uicontrol(p2, 'Style', 'edit', 'Position', [0.2 0.5 0.6 0.1]);
 
 % Number pad
-hPanel = uipanel(fig, 'Units', 'normalized', 'Position', [0.05 0.05 0.4 0.3]);
-t = {'7' '8' '9'; '4' '5' '6'; '1' '2' '3'; '<' '0' 'Enter'};
+p2a = uipanel(p2, 'Position', [0.1 0.05 0.8 0.4]);
+t = {'7' '8' '9'; '4' '5' '6'; '1' '2' '3'; 'Del' '0' 'Enter'};
 for r = 1:4
     for c = 1:3
-        if ~isempty(t{r, c})
-            h(r, c) = uicontrol(hPanel, 'Style', 'pushbutton', 'String', t{r, c}, ...
-                'Units', 'normalized', 'Position', [c/3-1/3 1-r/4 1/3 1/4], ...
-                'Callback', @(obj, ~)buttonCallback(obj.String, hAns));
-        end
+        uicontrol(p2a, 'Style', 'push', 'String', t{r, c}, 'Position', [c/3-1/3 1-r/4 1/3 1/4], 'Callback', @(obj, ~)numCallback(obj.String, hAns));
     end
 end
 
+% Results panel
+p3 = uipanel(fig, 'OuterPosition', [0.66 0 0.34 1], 'BorderType', 'beveledin');
+T = readlogs(dir('log/*.log'));
+a1 = axes(p3, 'Position', [0.1 0.52 0.9 0.4]);
+plotResults(a1, str2num(hN1.String), str2num(hN2.String), "times",  str2double(hMaxTime.String), str2double(hMaxCount.String), str2double(hGamma.String), T)
+a2 = axes(p3, 'Position', [0.1 0.02 0.9 0.4]);
+plotResults(a2, str2num(hN1.String), str2num(hN2.String), "divide", str2double(hMaxTime.String), str2double(hMaxCount.String), str2double(hGamma.String), T)
 
+end
+
+function run(hN1, hN2, hOp, T)
+% RUN
+N1 = num2str(hN1.String); % Numbers
+N2 = num2str(hN2.String); % Numbers
+OP = [];
+for k = hOp(:)'
+    if k.Value
+        OP = [OP string(k.String)]; % Opperators
+    end
+end
+dynamic = true;
 
 % Generate nubers
 if dynamic
     % Read previous results
     num_questions = 50;
     max_time = 20; % Maximum time per question
-    max_hist = 5;  % Look at only this many previous results
+    max_count = 5;  % Look at only this many previous results
     gamma = 1;
-    T = read_logs(dir('log/*.log'));
+    T = readlogs(dir('log/*.log'));
     for k = numel(OP) : -1 : 1
-        [~, ~, p(:,:,k)] = calc_stats(T, OP(k),  N1, N2, max_time, max_hist, gamma);
+        [~, ~, p(:,:,k)] = getstats(T, OP(k), N1, N2, max_time, max_count, gamma);
     end
 
     % Pick questions
@@ -155,9 +156,9 @@ for k = 1 : numel(V1)
     pause(1)
 
     % Log to file
-    log(file, '%3d, %3d, %6s, %3d, %3d, %1d, %4.1f', num1, num2, opp, answer, reply, reply==answer, toc);
+    log(file, '%3d, %3d, %6s, %3d, %3d, %1d, %4.1f', num1, num2, opp, answer, reply, reply==answer, t);
 
-    % TimesTablesResults(N1, N2, OP, max_time, max_hist, gamma, T)
+    % TimesTablesResults(N1, N2, OP, max_time, max_count, gamma, T)
 end
 end
 
@@ -196,39 +197,32 @@ fprintf(fid, '%s\n', str);
 fclose(fid);
 end
 
-function buttonCallback(str, h)
+function numCallback(str, h)
 if isfinite(str2double(str))
     h.String = [h.String str];
-elseif str == "<"
+elseif str == "Del"
     h.String = h.String(1:end-1);
 else
     disp Enter
 end
 end
 
-function plotResults(h, N1, N2, OP, max_time, max_count, gamma, T)
-% Step through operators
-for k = 1:numel(OP)
-    [Time, Count] = calc_stats(T, OP(k), N1, N2, max_time, max_count, gamma);
-    
-    % Plot stats
-    axes(h, 'Position', [0.05 (k-1)/numel(OP)+0.01 0.9 0.4]);
-    title(sprintf('%s\navg = %.2f sec', OP(k), mean(Time(Time>0))))
-    plotMatrix(N1, N2, Count, round(Time), Count/max_count)
-    
-    col = interp1(0:1, [0 1 0; 1 0 0], linspace(0, 1, 64)).^(1/2.4);
-    colormap([0.8 0.8 0.8; col])
-    clim([0 max_time])
-    colorbar
-end
+function plotResults(ax, N1, N2, OP, max_time, max_count, gamma, T)
+cla(ax), hold on, axis tight % Prepare axis
+[Time, Count] = getstats(T, OP, N1, N2, max_time, max_count, gamma);
+title(sprintf('%s (%.2f sec)', OP, mean(Time(Time>0))), 'FontSize', 14)
+plotmatrix(N1, N2, Time, Count/max_count, Count)
+col = interp1(0:1, [0 1 0; 1 0 0], linspace(0, 1, 64)).^(1/2.4);
+colormap([0.8 0.8 0.8; col])
+clim([0 max_time])
+colorbar
 end
 
-function plotMatrix(X, Y, Text, Color, Alpha)
-% Display a matrix as a grid of cells, with text, color and alpha.
-hold on, axis equal tight % Prepre axis
+function plotmatrix(X, Y, Color, Alpha, Text)
+% Display a matrix as a grid of cells with color, alpha, text.
 surf(0:numel(X), 0:numel(Y), zeros(numel(Y) + 1, numel(X) + 1), ... % Display matrix
-    'CData', Color', 'FaceColor', 'flat','EdgeColor', 'w', 'LineWidth', 2,... % Color
-    'FaceAlpha', 'flat', 'AlphaData', Alpha', 'AlphaDataMapping', 'none') % Alpha
+    'CData', Color', 'FaceColor', 'flat','EdgeColor', 'w', 'LineWidth', 2,... % Set color
+    'FaceAlpha', 'flat', 'AlphaData', Alpha', 'AlphaDataMapping', 'none') % Set alpha
 set(gca, 'XTick', 0.5:numel(X), 'XTickLabel', X) % Set x tick marks
 set(gca, 'YTick', 0.5:numel(Y), 'YTickLabel', Y) % Set y tick marks
 set(gca, 'XAxisLocation', 'top', 'YDir', 'reverse') % Change axis location
@@ -236,23 +230,28 @@ set(gca, 'XAxisLocation', 'top', 'YDir', 'reverse') % Change axis location
 text(gca, X(:), Y(:), string(Text), 'HorizontalAlignment', 'center', 'Clipping', 'on'); % Show text
 end
 
-function logs = read_logs(files)
-for k = numel(files) : -1 : 1
-    logs{k} = readtable(fullfile(files(k).folder, files(k).name));
+function T = readlogs(files)
+% Reads log files and returns results as a table.
+if isempty(files)
+    T = [];
+else
+    for k = numel(files) : -1 : 1
+        T{k} = readtable(fullfile(files(k).folder, files(k).name));
+    end
+    T = cat(1, T{:});
 end
-logs = cat(1, logs{:});
 end
 
-function [Time, Count, Prob] = calc_stats(logs, op, x, y, max_time, max_count, gamma)
-% Filter on operator
+function [Time, Count, Prob] = getstats(logs, op, x, y, max_time, max_count, gamma)
+% Select operator
 logs = logs(logs.Var3 == op, :);
 
-% FIX
+% BUG FIX / TODO
 if op == "divide"
     logs.Var1 = logs.Var1./logs.Var2;
 end
 
-% Filter old results
+% Select n latest results
 if size(logs, 1) > max_count
     [~, i] = sortrows([logs.Var1  logs.Var2]);
     logs = logs(i, :);
@@ -262,12 +261,12 @@ if size(logs, 1) > max_count
 end
 
 % Main
-X = 1:max(logs.Var1);
-Y = 1:max(logs.Var2);
+X = 1:max(x);
+Y = 1:max(y);
 sz = [max(X) max(Y)];
-ind = [logs.Var1  logs.Var2];
-time_list = max( min(logs.Var7, max_time), ~logs.Var6 * max_time); % Replace wrong answers with max time
-Time = accumarray(ind, time_list,   sz, @median);
+ind = [logs.Var1 logs.Var2];
+time_list = max(min(logs.Var7, max_time), ~logs.Var6 * max_time); % Replace wrong answers with max time
+Time = accumarray(ind, time_list, sz, @median);
 Count = accumarray(ind, time_list>0, sz, @sum);
 
 % Subset
@@ -275,9 +274,6 @@ xi = ismember(X, x);
 yi = ismember(Y, y);
 Time = Time(xi, yi);
 Count = Count(xi, yi);
-
-% Edge case
-Time(Count==0) = max_time;
 
 % Relative probability (coef)
 Prob = (Time/max_time).^gamma;
