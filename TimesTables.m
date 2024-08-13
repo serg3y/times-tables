@@ -1,186 +1,359 @@
-function TimesTables
+% Features
+% - Lets user select which operators and which numbers to test.
+% - Logs results to files.
+% - Shows results in realtime.
+% - Prioretises questions that were answered incorrectly or slowly.
 
-% Figure
-close(findobj(0, 'Name', 'Times Tables')) % Close old figures (convenience)
-fig = figure(...
-    Position = get(0).ScreenSize([3 4 3 4]).*[0.2 0.2 0.6 0.6], ...
-    Name = 'Times Tables', NumberTitle = 'off', ...
-    ToolBar = 'none', MenuBar = 'none', ...
-    DefaultUipanelUnits = 'normalized', ...
-    DefaultUicontrolUnits = 'normalized', ...
-    DefaultUicontrolFontSize = 14, ...
-    DefaultTextboxshapeFontSize = 14, ...
-    DefaultUicontrolFontWeight = 'bold', ...
-    DefaultTextboxshapeEdgeColor = 'n', ...
-    DefaultTextboxshapeVerticalAlignment = 'middle', ...
-    DefaultTextboxshapeHorizontalAlignment = 'center');
+% TODO
+% - Include addition and subtraction
+% - New user button
+% - Grey out input during pause
 
-% Settings panel
-p1 = uipanel(fig, 'Position', [0 0.0 0.33 1.0], 'BorderType', 'beveledin');
-annotation(p1, 'textbox', 'Position', [0.0 0.9 0.25 0.07], 'String', 'Numbers');
-annotation(p1, 'textbox', 'Position', [0.0 0.8 0.25 0.07], 'String', 'Numbers');
-annotation(p1, 'textbox', 'Position', [0.0 0.7 0.25 0.07], 'String', 'Operators');
-hN1 = uicontrol (p1, 'Style', 'edit', 'Position', [0.25 0.9 0.7 0.07], 'String', '2 3 4 5 6 7 8 9 10 11');
-hN2 = uicontrol (p1, 'Style', 'edit', 'Position', [0.25 0.8 0.7 0.07], 'String', '2 3 4 5 6 7 8 9 10 11');
-hOP = [uicontrol(p1, 'Style', 'chec', 'Position', [0.35 0.7 0.3 0.07], 'String', 'Times', 'Value', 1)
-       uicontrol(p1, 'Style', 'chec', 'Position', [0.65 0.7 0.3 0.07], 'String', 'Divide', 'Value', 1)];
-annotation(p1, 'textbox', 'Position', [0.0 0.5 0.3 0.07], 'String', 'Max Time');
-annotation(p1, 'textbox', 'Position', [0.0 0.4 0.3 0.07], 'String', 'Max Count');
-annotation(p1, 'textbox', 'Position', [0.0 0.3 0.3 0.07], 'String', 'Selectivity');
-hMaxTime  = uicontrol(p1, 'Style', 'edit', 'Position', [0.3 0.5 0.3 0.07], 'String', 20, 'Tooltip', 'Maximum time per question (sec)');
-hMaxCount = uicontrol(p1, 'Style', 'edit', 'Position', [0.3 0.4 0.3 0.07], 'String', 5, 'Tooltip', 'Limit assessment to this many results');
-hGamma    = uicontrol(p1, 'Style', 'edit', 'Position', [0.3 0.3 0.3 0.07], 'String', 1, 'Tooltip', ['If >1 then select questions in red.' 10 'If <1 more uniform' 10 'If 0 compleately unifrom.']);
+classdef TimesTables < handle
+    properties
+        % Default values
+        Operators = ["Times" "Divide"]
+        Numbers1 = [2:11]
+        Numbers2 = [2:11]
+        MaxTime = 20
+        MaxCount = 3
+        Gamma = 1
+        Display = 'Count'
 
-% Quiz panel
-p2 = uipanel(fig, 'Position', [0.33 0.0 0.33 1], 'BorderType', 'beveledin');
-hStart = uicontrol(p2, 'Style', 'push', 'Position', [0.01 0.89 0.25 0.1], 'String', 'START', 'Callback', @(o, e)startCallback); % Answer box
-hStop  = uicontrol(p2, 'Style', 'push', 'Position', [0.74 0.89 0.25 0.1], 'String', 'STOP',  'Callback', @(o, e)startCallback); % Answer box
-annotation(p2, 'textbox', 'Position', [0.3 0.9 0.4 0.1], 'String', '0 / ∞');
-annotation(p2, 'textbox', 'Position', [0.1 0.65 0.8 0.2], 'String', 'Press START');
-hAns    = uicontrol(p2, 'Style', 'edit', 'Position', [0.2 0.5 0.6 0.1]);
+        % Internal parameters
+        Data
+        FigH
+        StartH
+        CounterH
+        QuestionH
+        AnswerH
+        ResponceH
+        Results1H
+        Results2H
+        numpadH = [];
+        History = cell(1, 2);
+        
+    end
 
-% Number pad
-p2a = uipanel(p2, 'Position', [0.1 0.05 0.8 0.4]);
-t = {'7' '8' '9'; '4' '5' '6'; '1' '2' '3'; 'Del' '0' 'Enter'};
-for r = 1:4
-    for c = 1:3
-        uicontrol(p2a, 'Style', 'push', 'String', t{r, c}, 'Position', [c/3-1/3 1-r/4 1/3 1/4], 'Callback', @(obj, ~)numCallback(obj.String, hAns));
+    methods
+        function obj = TimesTables
+            obj.readIniFile;
+            obj.createFigure;
+            obj.createSettingsPanel;
+            obj.createQuizPanel;
+            obj.createResultsPanel;
+            obj.readData;
+            obj.updateResults;
+        end
+
+        function readIniFile(obj)
+            if isfile('TimesTables.ini')
+                t = readlines('TimesTables.ini'); % Read the file
+                t = regexpi(t, '(\w+) *[:=] *([^%#]+)', 'tokens', 'once'); % Extract property value pairs
+                t = cat(1, t{~cellfun(@isempty,t)})'; % Skip empty
+                t = struct(t{:}); % Make a struct
+                for f = string(intersect(fieldnames(obj), fieldnames(t)))' % Step through common fields
+                    if f == "Operators"
+                        obj.Operators = string(regexp(t.(f),'\w*','match'));
+                    else
+                        obj.(f) = str2num(t.(f), 'Evaluation', 'restricted'); %#ok<ST2NM>
+                    end
+                end
+            end
+        end
+
+        function createFigure(obj)
+            close(findobj(0, 'Name', 'Times Tables'));
+            obj.FigH = figure( ...
+                'Position', get(0).ScreenSize([3 4 3 4]) .* [0.2 0.2 0.6 0.6], ...
+                'Name', 'Times Tables', 'NumberTitle', 'off', ...
+                'ToolBar', 'none', 'MenuBar', 'none', ...
+                'DefaultUipanelUnits', 'normalized', ...
+                'DefaultUicontrolUnits', 'normalized', ...
+                'DefaultUipanelBorderType', 'beveledin', ...
+                'DefaultUicontrolFontSize', 14, ...
+                'DefaultTextboxshapeFontSize', 14, ...
+                'DefaultUicontrolFontWeight', 'bold', ...
+                'DefaultTextboxshapeEdgeColor', 'n', ...
+                'DefaultTextboxshapeVerticalAlignment', 'middle', ...
+                'DefaultTextboxshapeHorizontalAlignment', 'center');
+        end
+
+        function createSettingsPanel(obj)
+            h = uipanel(obj.FigH, 'Position', [0 0.0 0.33 1.0]);
+            lbl = {'Operators' 'Numbers1' 'Numbers2' 'Selectivity' 'Max Time' 'Max Count' 'Display'};
+            pos = [0.9 0.8 0.7 0.5 0.3 0.2 0.1];
+            for i = 1:numel(lbl)
+                annotation(h, 'textbox', 'Position', [0.0 pos(i) 0.3 0.05], 'String', lbl{i});
+            end
+            uicontrol(h, 'Style', 'chec', 'Position', [0.35 0.9 0.3 0.05], 'String', 'Times',  'Value', ismember("Times", obj.Operators),  'Callback', @(o, ~)setOperators('Times',  o.Value))
+            uicontrol(h, 'Style', 'chec', 'Position', [0.65 0.9 0.3 0.05], 'String', 'Divide', 'Value', ismember("Divide", obj.Operators), 'Callback', @(o, ~)setOperators('Divide', o.Value));
+            uicontrol(h, 'Style', 'edit', 'Position', [0.3 0.8 0.65 0.05], 'String', mat2str(obj.Numbers1), 'Callback', @(o, ~)setVal('Numbers1', str2num(o.String, 'Evaluation', 'restricted'))); %#ok<ST2NM>
+            uicontrol(h, 'Style', 'edit', 'Position', [0.3 0.7 0.65 0.05], 'String', mat2str(obj.Numbers2), 'Callback', @(o, ~)setVal('Numbers2', str2num(o.String, 'Evaluation', 'restricted'))); %#ok<ST2NM>
+            uicontrol(h, 'Style', 'edit', 'Position', [0.3 0.5 0.40 0.05], 'String', obj.Gamma,    'Callback', @(o, ~)setVal('Gamma',    str2double(o.String)), 'Tooltip', 'Selectivity');
+            uicontrol(h, 'Style', 'edit', 'Position', [0.3 0.3 0.40 0.05], 'String', obj.MaxTime,  'Callback', @(o, ~)setVal('MaxTime',  str2double(o.String)), 'Tooltip', 'Maximum time per question (sec)');
+            uicontrol(h, 'Style', 'edit', 'Position', [0.3 0.2 0.40 0.05], 'String', obj.MaxCount, 'Callback', @(o, ~)setVal('MaxCount', str2double(o.String)), 'Tooltip', 'Limit assessment to this many results');
+            uicontrol(h, 'Style', 'popu', 'Position', [0.3 0.1 0.40 0.05], 'String', {'Count' 'Time'}, 'FontSize', 12, 'Callback', @(o, ~)setVal('Display', o.String{o.Value}), 'Value', 1);
+            function setVal(prop, val)
+                obj.(prop) = val;
+                obj.updateResults;
+            end
+            function setOperators(prop, val)
+                if val
+                    obj.Operators = union(obj.Operators, prop);
+                else
+                    obj.Operators = setdiff(obj.Operators, prop);
+                end
+                obj.updateResults;
+            end
+        end
+
+
+        function createQuizPanel(obj)
+            h = uipanel(obj.FigH, 'Position', [0.33 0.0 0.33 1]);
+            obj.QuestionH = annotation(h, 'textbox', 'Position', [0.1 0.7 0.8 0.1], 'String', 'Press START', 'FontSize', 36, 'FontWeight', 'bold');
+            obj.AnswerH = annotation(h, 'textbox', 'Position', [0.1 0.6 0.8 0.1], 'String', '', 'FontSize', 36, 'FontWeight', 'bold');
+            obj.ResponceH = uicontrol(h, 'Style', 'edit', 'Position', [0.2 0.5 0.6 0.1], 'FontSize', 36, 'KeyPressFcn', @responceCallback, 'Enable', 'off');
+            obj.StartH = uicontrol(h, 'Style', 'pushbutton', 'Position', [0.01 0.89 0.25 0.1], 'String', 'START', 'Callback', @(~, ~)obj.start);
+            obj.CounterH = annotation(h, 'textbox', 'Position', [0.3 0.9  0.4 0.1], 'String', '', 'FontAngle', 'italic');
+            h2 = uipanel(h, 'Position', [0.1 0.05 0.8 0.4], 'Enable', 'off');
+            t = {'7' '8' '9'; '4' '5' '6'; '1' '2' '3'; 'Del' '0' 'Enter'}; % Num pad buttons
+            for r = 1:4
+                for c = 1:3
+                    obj.numpadH(end+1) = uicontrol(h2, 'Style', 'pushbutton', 'String', t{r, c}, 'Position', [c/3-1/3 1-r/4 1/3 1/4], 'Callback', @(o, ~)numPadCallback(o.String), 'Enable', 'off');
+                end
+            end
+            function numPadCallback(str)
+                if isfinite(str2double(str))
+                    obj.ResponceH.String = [obj.ResponceH.String str];
+                elseif str == "Del"
+                    obj.ResponceH.String = obj.ResponceH.String(1:end-1);
+                elseif str == "Enter"
+                    obj.ResponceH.UserData = 1;
+                end
+            end
+            function responceCallback(o, e)
+                if e.Key == "return"
+                    o.UserData = 1;
+                end
+            end
+        end
+
+        function createResultsPanel(obj)
+            p = uipanel(obj.FigH, 'OuterPosition', [0.66 0 0.34 1]);
+            obj.Results1H = axes(p, 'Position', [0.1 0.52 0.9 0.4]);
+            obj.Results2H = axes(p, 'Position', [0.1 0.02 0.9 0.4]);
+        end
+        function updateResults(obj)
+            if ismember("Times", obj.Operators)
+                obj.plotResults(obj.Results1H, "Times")
+            end
+            if ismember("Divide", obj.Operators)
+                obj.plotResults(obj.Results2H, "Divide")
+            end
+            set([obj.Results1H; obj.Results1H.Children; obj.Results1H.Colorbar], 'Visible', ismember("Times", obj.Operators));
+            set([obj.Results2H; obj.Results2H.Children; obj.Results2H.Colorbar], 'Visible', ismember("Divide", obj.Operators));
+        end
+        function plotResults(obj, ax, operator)
+            cla(ax), hold(ax, 'on'), axis(ax, 'tight') % Prepare axis
+            [Time, Count] = obj.getStats(operator);
+            title(ax, sprintf('%s   %.2f sec', operator, mean(Time(Time>0))), 'FontSize', 14)
+            if obj.Display == "Time"
+                Text = Time;
+            else
+                Text = Count;
+            end
+            plotmatrix(ax, obj.Numbers1, obj.Numbers2, Time, Count, round(Text, 3, 'significant'))
+            colormap(ax, interp1(0:1, [0 1 0; 1 0 0], linspace(0, 1, 256)).^(1/2.4))
+            clim(ax, [0 obj.MaxTime])
+            alim(ax, [0 obj.MaxCount])
+            colorbar(ax)
+        end
+
+        function start(obj)
+            if isempty(obj.Operators)
+                return
+            elseif obj.StartH.String == "START" % User pressed START
+                obj.StartH.String = "STOP";
+                counter = 0;
+            elseif obj.StartH.String == "STOP" % User pressed STOP
+                obj.StartH.String = "START";
+                obj.QuestionH.String = "";
+                obj.CounterH.String = "";
+                return
+            end
+
+            % Prepare to write results to file
+            if ~isfolder('log')
+                mkdir('log')
+            end
+            file = sprintf('log/%s_[%s]_%s_%s.log', datetime('now', 'Format', 'yyyyMMdd_HHmm'), strjoin(obj.Operators), mat2str(obj.Numbers1), mat2str(obj.Numbers2));
+
+            % Main loop
+            pause(1)
+            while obj.StartH.String == "STOP"
+                
+                % Display question number
+                counter = counter + 1;
+                obj.CounterH.String = "#" + counter;
+
+                % Analyse past results
+                for k = numel(obj.Operators) : -1 : 1
+                    [~, ~, prob(:,:,k)] = obj.getStats(obj.Operators(k));
+                end
+
+                % Pick a question
+                for retry = 1:50 % Avoid asking same question twice
+                    [x, y, z] = ndgrid(obj.Numbers1, obj.Numbers2, obj.Operators);
+                    n = rand(1, 1) * sum(prob(:));
+                    [~, i] = max(n < cumsum(prob(:)), [], 1);
+                    num1 = x(i);
+                    num2 = y(i);
+                    opp  = z(i);
+                    if any(cellfun(@(x)isequal(x, {num1 num2 opp}), obj.History))
+                        if retry==50
+                            disp(1)
+                        end
+                        continue % Try again
+
+                    else
+                        break
+                    end
+                end
+                obj.History{1} = {num1 num2 opp}; % Remember for next time
+                obj.History = circshift(obj.History,1);
+                
+                switch opp
+                    case 'Times'
+                        Question = sprintf('%3d × %2d = ', num1, num2);
+                        voicequestion(num1, opp, num2);
+                        answer = num1 * num2;
+                    case 'Divide'
+                        Question = sprintf('%3d ÷ %2d = ', num1 * num2, num1);
+                        voicequestion(num1 * num2, opp, num1);
+                        answer = num2;
+                end
+
+                % Wait for user responce
+                set(obj.QuestionH, 'String', Question);
+                set(obj.AnswerH, 'String', '');
+                set(obj.ResponceH, 'UserData', [], 'String', '', 'Enable', 'on');
+                set(obj.numpadH, 'Enable', 'on');
+                uicontrol(obj.ResponceH) % Give focus to input box
+                tic
+                while isempty(obj.ResponceH.UserData) && obj.StartH.String == "STOP"
+                    pause(0.1)
+                end
+                if obj.StartH.String == "START"
+                    break
+                end
+                
+                reply_str = obj.ResponceH.String;
+                set(obj.ResponceH, 'Enable', 'off');
+                set(obj.numpadH, 'Enable', 'off');
+                reply = str2double(reply_str); % Convert to number
+                
+                % Append results to Data
+                obj.Data(end+1, :) = {opp, num1, num2, answer, reply, reply==answer, toc};
+
+                % Create output file
+                if ~isfile(file)
+                    writelines('Operator,Number1,Number2,Answer,Responce,Correct,Time', file)
+                end
+
+                % Append results to log file
+                writelines(sprintf('%6s, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %4.1f', obj.Data{end, :}), file, 'WriteMod', 'append')
+
+                % Give user feedback
+                obj.AnswerH.String = answer;
+                if reply == answer
+                    obj.AnswerH.Color = [0 0.7 0];
+                    sound(wavread('right')*4, 8000)
+                    pause(1)
+                else
+                    reply_str, reply, answer % Debugging
+                    obj.AnswerH.Color = [1 0 0];
+                    sound(wavread('wrong')*5, 4000)
+                    pause(5)
+                end
+                
+                % Plot Results
+                obj.updateResults
+            end
+        end
+
+        function readData(obj)
+            files = dir('log/*.log');
+            if isempty(files)
+                obj.Data = table('Size',[0 7], ...
+                    'VariableNames',["Operator" "Number1" "Number2" "Answer" "Responce" "Correct" "Time"  ], ...
+                    'VariableTypes',["string"   "double"  "double"  "double" "double"   "double"  "double"]);
+            else
+                for k = numel(files) : -1 : 1
+                    data{k} = readtable(fullfile(files(k).folder, files(k).name), 'TextType', 'string');
+                end
+                obj.Data = cat(1, data{:});
+            end
+        end
+
+
+        function [Time, Count, Prob] = getStats(obj, Operator)
+
+            % Filter the data
+            data = obj.Data; % Make a temporary copy
+            data = data(strcmpi(data.Operator, Operator) & ismember(data.Number1, obj.Numbers1) & ismember(data.Number2, obj.Numbers2), :);
+            max_N1 = max(obj.Numbers1); % Expected array size
+            max_N2 = max(obj.Numbers2);
+
+            % Keep only MaxCount latest results
+            if size(data, 1) > obj.MaxCount
+                [~, i] = sortrows([data.Number1 data.Number2]);
+                data = data(i, :);
+                idx = [data.Number1  data.Number2];
+                ind = all(idx(obj.MaxCount + 1 : end, :) == idx(1 : end - obj.MaxCount, :), 2);
+                data(ind, :) = [];
+            end
+
+            % Treat incorrect and long answers as max time
+            data.Time(data.Time > obj.MaxTime | ~data.Correct) = obj.MaxTime;
+
+            % Main
+            ind = [data.Number1 data.Number2];
+            Time = accumarray(ind, data.Time, [max_N1 max_N2], @mean);
+            Count = accumarray(ind, data.Time>0, [max_N1 max_N2], @sum);
+
+            % Subset
+            xi = ismember(1 : max_N1, obj.Numbers1);
+            yi = ismember(1 : max_N2, obj.Numbers2);
+            Time = Time(xi, yi);
+            Count = Count(xi, yi);
+
+            % Probability
+            % Prob = 1 means all answers were wrong or not yet answered or a mix,
+            % as user provides more answers Prob tend to mean(Time)/MaxTime.
+            Prob = ((Time / obj.MaxTime).*(Count/obj.MaxCount) + (obj.MaxCount-Count)./obj.MaxCount) .^obj.Gamma;
+        end
+
     end
 end
 
-% Results panel
-p3 = uipanel(fig, 'OuterPosition', [0.66 0 0.34 1], 'BorderType', 'beveledin');
-T = readlogs(dir('log/*.log'));
-a1 = axes(p3, 'Position', [0.1 0.52 0.9 0.4]);
-plotResults(a1, str2num(hN1.String), str2num(hN2.String), "times",  str2double(hMaxTime.String), str2double(hMaxCount.String), str2double(hGamma.String), T)
-a2 = axes(p3, 'Position', [0.1 0.02 0.9 0.4]);
-plotResults(a2, str2num(hN1.String), str2num(hN2.String), "divide", str2double(hMaxTime.String), str2double(hMaxCount.String), str2double(hGamma.String), T)
 
-end
-
-function run(hN1, hN2, hOp, T)
-% RUN
-N1 = num2str(hN1.String); % Numbers
-N2 = num2str(hN2.String); % Numbers
-OP = [];
-for k = hOp(:)'
-    if k.Value
-        OP = [OP string(k.String)]; % Opperators
-    end
-end
-dynamic = true;
-
-% Generate nubers
-if dynamic
-    % Read previous results
-    num_questions = 50;
-    max_time = 20; % Maximum time per question
-    max_count = 5;  % Look at only this many previous results
-    gamma = 1;
-    T = readlogs(dir('log/*.log'));
-    for k = numel(OP) : -1 : 1
-        [~, ~, p(:,:,k)] = getstats(T, OP(k), N1, N2, max_time, max_count, gamma);
-    end
-
-    % Pick questions
-    [x, y, z] = ndgrid(N1, N2, OP);
-    n = rand(1, num_questions) * sum(p(:));
-    [~, i] = max(n < cumsum(p(:)), [], 1);
-    V1 = x(i);
-    V2 = y(i);
-    V3 = z(i);
-
-else
-    [V1, V2, V3] = ndgrid(N1, N2, OP);
-    ind = randperm(numel(V1), numel(V1));
-    V1 = V1(ind);
-    V2 = V2(ind);
-    V3 = V3(ind);
-end
-
-% Output log file
-if ~isfolder('log')
-    mkdir('log')
-end
-file = sprintf('log/%s_[%s]_[%s]_%s_%g.log', ...
-    string(datetime('now', 'Format', 'yyyyMMdd_HHmm')), ...
-    strjoin(string(N1)), strjoin(string(N2)), strjoin(OP), numel(V1));
-pause(1)
-
-% Loop through number of questions
-for k = 1 : numel(V1)
-
-    % Generate question
-    num1 = V1(k);
-    num2 = V2(k);
-    opp  = V3(k);
-    switch opp
-        case 'times'
-            fprintf('%3d × %2d = ', num1, num2); % Print question
-            speak_question(num1, opp, num2); % Say question
-            answer = num1 * num2;
-        case 'divide'
-            fprintf('%3d ÷ %2d = ', num1 * num2, num1); % Print question
-            speak_question(num1 * num2, opp, num1); % Say question
-            answer = num2;
-            num1 = num1 * num2;
-        case 'square'
-            fprintf('%3d^2 = ', num1); % Print question
-            speak_question(num1, opp, 'none'); % Say question
-            answer = num1 * num1;
-            num2 = NaN;
-        case 'sqrt'
-            fprintf('sqrt(%3d) = ', num1^2); % Print question
-            speak_question('none', opp, num1^2); % Say question
-            answer = num1;
-            num2 = NaN;
-    end
-
-    % Wait for user
-    tic % Measure time
-    reply = input('', 's');
-    fprintf('\b%*s', max(5 - numel(reply), 0), ''); % Pad reply with upto 5 spaces
-    reply = str2double(reply); % Convert to number
-    t = toc;
-
-    % Check answer
-    if reply == answer
-        sound(wavread('right')*4, 8000)
-        fprintf(   ' %3s ', 'OK');
-    else
-        sound(wavread('wrong')*5, 4000)
-        fprintf(2, ' %3d ', answer); % Show correct answer in red
-    end
-    % fprintf(' %4.1fs\n', t); % Show time taken
-    fprintf('\n'); 
-    pause(1)
-
-    % Log to file
-    log(file, '%3d, %3d, %6s, %3d, %3d, %1d, %4.1f', num1, num2, opp, answer, reply, reply==answer, t);
-
-    % TimesTablesResults(N1, N2, OP, max_time, max_count, gamma, T)
-end
-end
-
-function speak_question(n1, operator, n2)
+function voicequestion(n1, operator, n2)
 sound([num2wav(n1); wavread(operator)*0.6; num2wav(n2)], 8000);
 end
+
 
 function w = num2wav(num)
 if     num > 0 && num<100,     w = wavread(num);
 elseif num < 0,                w = [wavread("minus"); num2wav(-num)];
-elseif num > 100 && num < 199, w = [num2wav(100); num2wav(num - 100)];
-elseif num > 200 && num < 299, w = [num2wav(100); num2wav(num - 200)];
-elseif num > 300 && num < 399, w = [num2wav(100); num2wav(num - 300)];
-elseif num > 400 && num < 499, w = [num2wav(100); num2wav(num - 400)];
-elseif num > 500 && num < 599, w = [num2wav(100); num2wav(num - 500)];
-elseif num > 600 && num < 699, w = [num2wav(100); num2wav(num - 600)];
-elseif num > 700 && num < 799, w = [num2wav(100); num2wav(num - 700)];
-elseif num > 800 && num < 899, w = [num2wav(100); num2wav(num - 800)];
-elseif num > 900 && num < 999, w = [num2wav(100); num2wav(num - 900)];
-else,  error('not yet supported')
+elseif num == 100,              w = wavread(100);
+elseif num > 100 && num < 199, w = [wavread(100); num2wav(num - 100)];
+elseif num == 200,              w = wavread(200);
+elseif num > 200 && num < 299, w = [wavread(200); num2wav(num - 200)];
+else,  fprintf(2, 'ERROR: %g is not supported\n', num)
 end
 end
+
 
 function y = wavread(name)
 [y, f] = audioread("wav/" + name + ".wav"); % Read file
@@ -190,91 +363,16 @@ i2 = find(y > 0.01, 1, 'last') + 0.2*8000; % Append 0.2 sec silence to end
 y = y(i1 : min(i2, end)); % Output
 end
 
-function log(file, varargin)
-fid = fopen(file, 'a');
-str = sprintf(varargin{:});
-fprintf(fid, '%s\n', str);
-fclose(fid);
-end
 
-function numCallback(str, h)
-if isfinite(str2double(str))
-    h.String = [h.String str];
-elseif str == "Del"
-    h.String = h.String(1:end-1);
-else
-    disp Enter
-end
-end
-
-function plotResults(ax, N1, N2, OP, max_time, max_count, gamma, T)
-cla(ax), hold on, axis tight % Prepare axis
-[Time, Count] = getstats(T, OP, N1, N2, max_time, max_count, gamma);
-title(sprintf('%s (%.2f sec)', OP, mean(Time(Time>0))), 'FontSize', 14)
-plotmatrix(N1, N2, Time, Count/max_count, Count)
-col = interp1(0:1, [0 1 0; 1 0 0], linspace(0, 1, 64)).^(1/2.4);
-colormap([0.8 0.8 0.8; col])
-clim([0 max_time])
-colorbar
-end
-
-function plotmatrix(X, Y, Color, Alpha, Text)
+function plotmatrix(ax, X, Y, Color, Alpha, Text)
 % Display a matrix as a grid of cells with color, alpha, text.
-surf(0:numel(X), 0:numel(Y), zeros(numel(Y) + 1, numel(X) + 1), ... % Display matrix
-    'CData', Color', 'FaceColor', 'flat','EdgeColor', 'w', 'LineWidth', 2,... % Set color
-    'FaceAlpha', 'flat', 'AlphaData', Alpha', 'AlphaDataMapping', 'none') % Set alpha
-set(gca, 'XTick', 0.5:numel(X), 'XTickLabel', X) % Set x tick marks
-set(gca, 'YTick', 0.5:numel(Y), 'YTickLabel', Y) % Set y tick marks
-set(gca, 'XAxisLocation', 'top', 'YDir', 'reverse') % Change axis location
+set(ax, ...
+    'XTick', 0.5:numel(X), 'XTickLabel', X, ... % Set x tick marks
+    'YTick', 0.5:numel(Y), 'YTickLabel', Y, ... % Set y tick marks
+    'XAxisLocation', 'top', 'YDir', 'reverse') % Change axis location
+surf(ax, 0:numel(X), 0:numel(Y), zeros(numel(Y) + 1, numel(X) + 1), ... % Display matrix
+    'FaceColor', 'flat', 'CData', Color', 'EdgeColor', 'w', 'LineWidth', 2,... % Set color
+    'FaceAlpha', 'flat', 'AlphaData', Alpha', 'AlphaDataMapping', 'scaled') % Set alpha
 [X, Y] = ndgrid(0.5:numel(X), 0.5:numel(Y)); % Text locations
-text(gca, X(:), Y(:), string(Text), 'HorizontalAlignment', 'center', 'Clipping', 'on'); % Show text
-end
-
-function T = readlogs(files)
-% Reads log files and returns results as a table.
-if isempty(files)
-    T = [];
-else
-    for k = numel(files) : -1 : 1
-        T{k} = readtable(fullfile(files(k).folder, files(k).name));
-    end
-    T = cat(1, T{:});
-end
-end
-
-function [Time, Count, Prob] = getstats(logs, op, x, y, max_time, max_count, gamma)
-% Select operator
-logs = logs(logs.Var3 == op, :);
-
-% BUG FIX / TODO
-if op == "divide"
-    logs.Var1 = logs.Var1./logs.Var2;
-end
-
-% Select n latest results
-if size(logs, 1) > max_count
-    [~, i] = sortrows([logs.Var1  logs.Var2]);
-    logs = logs(i, :);
-    idx = [logs.Var1  logs.Var2];
-    ind = all(idx(max_count + 1 : end, :) == idx(1 : end - max_count, :), 2);
-    logs(ind, :) = [];
-end
-
-% Main
-X = 1:max(x);
-Y = 1:max(y);
-sz = [max(X) max(Y)];
-ind = [logs.Var1 logs.Var2];
-time_list = max(min(logs.Var7, max_time), ~logs.Var6 * max_time); % Replace wrong answers with max time
-Time = accumarray(ind, time_list, sz, @median);
-Count = accumarray(ind, time_list>0, sz, @sum);
-
-% Subset
-xi = ismember(X, x);
-yi = ismember(Y, y);
-Time = Time(xi, yi);
-Count = Count(xi, yi);
-
-% Relative probability (coef)
-Prob = (Time/max_time).^gamma;
+text(ax, X(:), Y(:), string(Text), 'Clipping', 'on', 'HorizontalAlignment', 'center'); % Show text
 end
